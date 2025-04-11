@@ -1,6 +1,7 @@
 streamlit
 pandas
-openpyxl
+numpy
 matplotlib
 plotly
-numpy
+openpyxl
+pycountry
