@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 
 st.set_page_config(layout="wide")
@@ -155,5 +156,72 @@ if show_map:
     fig_map.update_layout(margin={"r":0,"t":30,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-st.download_button("Download Composite Index Data (Domains)", df_dom.to_csv(index=False), file_name="domain_indices.csv")
+
 st.download_button("Download Composite Index Data (Subdomains)", df_sub.to_csv(index=False), file_name="subdomain_indices.csv")
+
+
+
+
+# Indicator Charts Section
+show_indicator_charts = st.checkbox("Show Indicator Charts", value=False)
+
+if show_indicator_charts:
+    st.subheader("Bar Chart for Indicator")
+    norm_or_raw = st.radio("Show indicators as:", ["Normalized", "Raw"], horizontal=True)
+    sort_order = st.radio("Sort order:", ["Descending", "Ascending"], horizontal=True, key="sort_order")
+    ascending = sort_order == "Ascending"
+
+    indicator_df = df_full if norm_or_raw == "Normalized" else pd.concat([df[["Country"]], df_raw_indicators], axis=1)
+
+    grouped_options = {sub: indicators for sub, indicators in grouped_indicators.items() if any(i in indicator_df.columns for i in indicators)}
+    if not grouped_options:
+        st.warning("No available indicators in the selected structure.")
+    else:
+        subdomain_selected = st.selectbox("Select a Subdomain", list(grouped_options.keys()), key="subdomain_group")
+        indicators_in_group = [i for i in grouped_options[subdomain_selected] if i in indicator_df.columns]
+        selected_indicator_to_plot = st.selectbox("Select an Indicator to Plot", options=indicators_in_group, key="indicator_plot")
+
+        df_plot_ind = indicator_df.set_index("Country")[[selected_indicator_to_plot]].sort_values(by=selected_indicator_to_plot, ascending=ascending)
+        colors_ind = ['red' if idx == "EU27" else 'blue' for idx in df_plot_ind.index]
+        fig_ind, ax_ind = plt.subplots(figsize=(10, 6))
+        df_plot_ind[selected_indicator_to_plot].plot(kind='barh', ax=ax_ind, color=colors_ind)
+        ax_ind.set_xlabel("Indicator Value")
+        ax_ind.set_ylabel("Country")
+        ax_ind.set_title(f"{selected_indicator_to_plot} by Country ({norm_or_raw})")
+        st.pyplot(fig_ind)
+
+        if norm_or_raw == "Normalized":
+            st.caption("Values are normalized using min-max scaling to a 0–1 range.")
+        else:
+            st.caption("Values reflect original scales without normalization.")
+
+# Scatter Plot Comparison
+show_scatter = st.checkbox("Show Scatter Plot for Domain/Subdomain Comparison", value=False)
+if show_scatter:
+    st.subheader("Scatter Plot of Indices")
+    level = st.radio("Select level of indices:", ["Domain", "Subdomain"], horizontal=True, key="scatter_level")
+    df_to_plot = df_dom if level == "Domain" else df_sub
+    x_axis = st.selectbox("Select X-axis index:", df_to_plot.columns[1:], key="x_axis")
+    y_axis = st.selectbox("Select Y-axis index:", df_to_plot.columns[1:], key="y_axis")
+    fig_scatter = px.scatter(df_to_plot, x=x_axis, y=y_axis, text="Country", color=np.where(df_to_plot["Country"]=="EU27", "EU27", "Other"))
+    fig_scatter.update_traces(textposition='top center')
+    fig_scatter.update_layout(title=f"{x_axis} vs {y_axis} by Country")
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+# Radar Chart Comparison
+show_radar = st.checkbox("Show Radar Chart for Country Profiles", value=False)
+if show_radar:
+    st.subheader("Radar Chart Comparison")
+    level = st.radio("Select level of indices:", ["Domain", "Subdomain"], horizontal=True, key="radar_level")
+    df_radar = df_dom if level == "Domain" else df_sub
+    selected_countries_radar = st.multiselect("Select countries to compare:", df_radar["Country"].tolist(), default=["EU27"])
+    dimensions = df_radar.columns[1:]
+    fig_radar = go.Figure()
+    for country in selected_countries_radar:
+        values = df_radar[df_radar["Country"] == country][dimensions].values.flatten().tolist()
+        fig_radar.add_trace(go.Scatterpolar(r=values, theta=dimensions, fill='toself', name=country))
+    fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0,1])), showlegend=True)
+    st.plotly_chart(fig_radar, use_container_width=True)
+
+
+
