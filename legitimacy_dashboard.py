@@ -27,34 +27,39 @@ hierarchy = pd.DataFrame({
     "Indicator": indicator_row[1:]
 })
 
+# Sidebar Filters
 st.sidebar.header("Filter Structure")
-all_domains = hierarchy["Domain"].unique()
-select_all_domains = st.sidebar.checkbox("Select All Domains", value=True, key="select_all_domains")
-selected_domains = st.sidebar.multiselect("Select Domains", options=all_domains, default=all_domains if select_all_domains else [])
-filtered_hierarchy = hierarchy[hierarchy["Domain"].isin(selected_domains)]
+with st.sidebar.expander("Display Options", expanded=True):
+    # Selection for Domains
+    all_domains = hierarchy["Domain"].unique()
+    select_all_domains = st.checkbox("Select All Domains", value=True, key="select_all_domains")
+    selected_domains = st.multiselect("Select Domains", options=all_domains, default=all_domains if select_all_domains else [])
+    filtered_hierarchy = hierarchy[hierarchy["Domain"].isin(selected_domains)]
 
-all_subdomains = filtered_hierarchy["Subdomain"].unique()
-select_all_subdomains = st.sidebar.checkbox("Select All Subdomains", value=True, key="select_all_subdomains")
-selected_subdomains = st.sidebar.multiselect("Select Subdomains", options=all_subdomains, default=all_subdomains if select_all_subdomains else [])
-filtered_hierarchy = filtered_hierarchy[filtered_hierarchy["Subdomain"].isin(selected_subdomains)]
+    # Selection for Subdomains
+    all_subdomains = filtered_hierarchy["Subdomain"].unique()
+    select_all_subdomains = st.checkbox("Select All Subdomains", value=True, key="select_all_subdomains")
+    selected_subdomains = st.multiselect("Select Subdomains", options=all_subdomains, default=all_subdomains if select_all_subdomains else [])
+    filtered_hierarchy = filtered_hierarchy[filtered_hierarchy["Subdomain"].isin(selected_subdomains)]
 
-countries = data["Country"].unique().tolist()
-selected_countries = st.sidebar.multiselect("Select Countries", options=countries, default=countries)
+    # Selection for Countries
+    countries = data["Country"].unique().tolist()
+    selected_countries = st.multiselect("Select Countries", options=countries, default=countries)
 
-df = data[data["Country"].isin(selected_countries)]
-grouped_indicators = filtered_hierarchy.groupby("Subdomain")["Indicator"].apply(list).to_dict()
-
-st.sidebar.markdown("### Select Indicators per Subdomain")
-selected_indicators = []
-select_all_indicators = st.sidebar.checkbox("Select All Indicators", value=True, key="select_all_indicators")
-
-for subdomain, indicators in grouped_indicators.items():
-    with st.sidebar.expander(f"{subdomain}", expanded=True):
+    # Selection for Indicators
+    grouped_indicators = filtered_hierarchy.groupby("Subdomain")["Indicator"].apply(list).to_dict()
+    selected_indicators = []
+    select_all_indicators = st.checkbox("Select All Indicators", value=True, key="select_all_indicators")
+    for subdomain, indicators in grouped_indicators.items():
         selected = st.multiselect(f"Indicators in {subdomain}", indicators, default=indicators if select_all_indicators else [], key=f"sel_{subdomain}")
         selected_indicators.extend(selected)
 
+# Data Processing
+df = data[data["Country"].isin(selected_countries)]
 df_raw_indicators = df[selected_indicators].apply(pd.to_numeric, errors='coerce')
 df_numeric = df_raw_indicators.copy()
+
+# Normalize Indicators
 for col in df_numeric.columns:
     min_val = df_numeric[col].min()
     max_val = df_numeric[col].max()
@@ -63,6 +68,7 @@ for col in df_numeric.columns:
 
 df_full = pd.concat([df[["Country"]], df_numeric], axis=1)
 
+# Calculate Subdomain Indices
 subdomain_indices = {}
 for sub in filtered_hierarchy["Subdomain"].unique():
     inds = filtered_hierarchy[(filtered_hierarchy["Subdomain"] == sub) & (filtered_hierarchy["Indicator"].isin(selected_indicators))]["Indicator"].tolist()
@@ -72,6 +78,7 @@ for sub in filtered_hierarchy["Subdomain"].unique():
 df_sub = pd.DataFrame(subdomain_indices)
 df_sub.insert(0, "Country", df["Country"].values)
 
+# Calculate Domain Indices
 domain_indices = {}
 for dom in filtered_hierarchy["Domain"].unique():
     subs = filtered_hierarchy[filtered_hierarchy["Domain"] == dom]["Subdomain"].unique()
@@ -82,25 +89,34 @@ for dom in filtered_hierarchy["Domain"].unique():
 df_dom = pd.DataFrame(domain_indices)
 df_dom.insert(0, "Country", df["Country"].values)
 
-# Normalize domain and subdomain indices
+# Normalize Domain Indices
 for col in df_dom.columns[1:]:
     min_val = df_dom[col].min()
     max_val = df_dom[col].max()
     if max_val > min_val:
         df_dom[col] = (df_dom[col] - min_val) / (max_val - min_val)
 
-show_tables = st.checkbox("Show Composite Index Tables", value=True)
-show_bar_charts = st.checkbox("Show Bar Charts", value=True)
-show_map = st.checkbox("Show Map", value=True)
+# Visualization Tabs (Using Radio Button for Tabs)
+visualization_tab = st.radio("Choose Visualization Type:", 
+                             ["Show Bar Charts", 
+                              "Show Composite Index Tables", 
+                              "Show Map", 
+                              "Show Indicator Charts", 
+                              "Show Scatter Plot", 
+                              "Show Radar Chart"], 
+                             index=0, 
+                             horizontal=True)
 
-if show_tables:
+# Show Tables
+if visualization_tab == "Show Composite Index Tables":
     st.subheader("Composite Indices by Domain")
     st.dataframe(df_dom)
 
     st.subheader("Composite Indices by Subdomain")
     st.dataframe(df_sub)
 
-if show_bar_charts:
+# Show Bar Charts
+elif visualization_tab == "Show Bar Charts":
     st.subheader("Bar Chart for Domain Index")
     selected_domain_to_plot = st.selectbox("Select a Domain to Plot", options=df_dom.columns[1:], key="domain_plot")
     df_plot_dom = df_dom.set_index("Country")[[selected_domain_to_plot]].sort_values(by=selected_domain_to_plot)
@@ -123,7 +139,8 @@ if show_bar_charts:
     ax_sub.set_title(f"{selected_subdomain_to_plot} Index by Country")
     st.pyplot(fig_sub)
 
-if show_map:
+# Show Map
+elif visualization_tab == "Show Map":
     st.subheader("Map: Selected Index")
     index_type = st.radio("Choose index type for map:", ["Domain", "Subdomain", "Indicator (normalized)", "Indicator (raw)"], horizontal=True)
     index_df = df_dom if index_type == "Domain" else df_sub if index_type == "Subdomain" else df_full if index_type == "Indicator (normalized)" else pd.concat([df[["Country"]], df_raw_indicators], axis=1)
@@ -157,13 +174,8 @@ if show_map:
     fig_map.update_layout(margin={"r":0,"t":30,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-st.download_button("Download Composite Index Data (Subdomains)", df_sub.to_csv(index=False), file_name="subdomain_indices.csv")
-
-
-# Indicator Charts Section
-show_indicator_charts = st.checkbox("Show Indicator Charts", value=False)
-
-if show_indicator_charts:
+# Show Indicator Charts
+elif visualization_tab == "Show Indicator Charts":
     st.subheader("Bar Chart for Indicator")
     norm_or_raw = st.radio("Show indicators as:", ["Normalized", "Raw"], horizontal=True)
     sort_order = st.radio("Sort order:", ["Descending", "Ascending"], horizontal=True, key="sort_order")
@@ -194,8 +206,7 @@ if show_indicator_charts:
             st.caption("Values reflect original scales without normalization.")
 
 # Scatter Plot Comparison
-show_scatter = st.checkbox("Show Scatter Plot for Domain/Subdomain Comparison", value=False)
-if show_scatter:
+elif visualization_tab == "Show Scatter Plot":
     st.subheader("Scatter Plot of Indices")
     level = st.radio("Select level of indices:", ["Domain", "Subdomain"], horizontal=True, key="scatter_level")
     df_to_plot = df_dom if level == "Domain" else df_sub
@@ -207,23 +218,11 @@ if show_scatter:
     st.plotly_chart(fig_scatter, use_container_width=True)
 
 # Radar Chart Comparison
-show_radar = st.checkbox("Show Radar Chart for Country Profiles", value=False)
-if show_radar:
+elif visualization_tab == "Show Radar Chart":
     st.subheader("Radar Chart Comparison")
     level = st.radio("Select level of indices:", ["Domain", "Subdomain"], horizontal=True, key="radar_level")
     df_radar = df_dom if level == "Domain" else df_sub
-    available_countries = df_radar["Country"].tolist()
-
-    # Set default to 'EU' only if it exists in the available countries
-    default_countries = ["EU"] if "EU" in available_countries else []
-
-    # Use the multiselect widget to select countries for comparison
-    selected_countries_radar = st.multiselect(
-        "Select countries to compare:",
-        available_countries,
-        default=default_countries  # Dynamically set the default
-    )
-
+    selected_countries_radar = st.multiselect("Select countries to compare:", df_radar["Country"].tolist(), default=["EU"])
     dimensions = df_radar.columns[1:]
     fig_radar = go.Figure()
     for country in selected_countries_radar:
