@@ -53,55 +53,41 @@ for subdomain, indicators in grouped_indicators.items():
         selected = st.multiselect(f"Indicators in {subdomain}", indicators, default=indicators if select_all_indicators else [], key=f"sel_{subdomain}")
         selected_indicators.extend(selected)
 
-# Ensure selected indicators are valid
-selected_indicators = [ind for ind in selected_indicators if ind in df.columns]
-if not selected_indicators:
-    st.warning("No valid indicators selected.")
-    st.stop()
-
-# Helper function for normalization, excluding EU for min/max
-def normalize_series(series, country_col, exclude_country="EU"):
-    mask = country_col != exclude_country
-    min_val = series[mask].min()
-    max_val = series[mask].max()
-    if max_val > min_val:
-        return (series - min_val) / (max_val - min_val)
-    else:
-        return pd.Series(0, index=series.index)  # Handle constant values
-
-# Normalize indicators, excluding EU for min/max
 df_raw_indicators = df[selected_indicators].apply(pd.to_numeric, errors='coerce')
 df_numeric = df_raw_indicators.copy()
 for col in df_numeric.columns:
-    df_numeric[col] = normalize_series(df_numeric[col], df["Country"])
+    min_val = df_numeric[col].min()
+    max_val = df_numeric[col].max()
+    if max_val > min_val:
+        df_numeric[col] = (df_numeric[col] - min_val) / (max_val - min_val)
+
 df_full = pd.concat([df[["Country"]], df_numeric], axis=1)
 
-# Calculate subdomain indices
 subdomain_indices = {}
 for sub in filtered_hierarchy["Subdomain"].unique():
     inds = filtered_hierarchy[(filtered_hierarchy["Subdomain"] == sub) & (filtered_hierarchy["Indicator"].isin(selected_indicators))]["Indicator"].tolist()
     if inds:
         subdomain_indices[sub] = df_numeric[inds].mean(axis=1, skipna=True)
+
 df_sub = pd.DataFrame(subdomain_indices)
 df_sub.insert(0, "Country", df["Country"].values)
 
-# Normalize subdomain indices, excluding EU for min/max
-for col in df_sub.columns[1:]:
-    df_sub[col] = normalize_series(df_sub[col], df_sub["Country"])
-
-# Calculate domain indices
 domain_indices = {}
 for dom in filtered_hierarchy["Domain"].unique():
     subs = filtered_hierarchy[filtered_hierarchy["Domain"] == dom]["Subdomain"].unique()
     existing_subs = [s for s in subs if s in df_sub.columns]
     if existing_subs:
         domain_indices[dom] = df_sub[existing_subs].mean(axis=1, skipna=True)
+
 df_dom = pd.DataFrame(domain_indices)
 df_dom.insert(0, "Country", df["Country"].values)
 
-# Normalize domain indices, excluding EU for min/max
+# Normalize domain and subdomain indices
 for col in df_dom.columns[1:]:
-    df_dom[col] = normalize_series(df_dom[col], df_dom["Country"])
+    min_val = df_dom[col].min()
+    max_val = df_dom[col].max()
+    if max_val > min_val:
+        df_dom[col] = (df_dom[col] - min_val) / (max_val - min_val)
 
 show_tables = st.checkbox("Show Composite Index Tables", value=True)
 show_bar_charts = st.checkbox("Show Bar Charts", value=True)
@@ -171,8 +157,6 @@ if show_map:
     fig_map.update_layout(margin={"r":0,"t":30,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-st.download_button("Download Composite Index Data (Subdomains)", df_sub.to_csv(index=False), file_name="subdomain_indices.csv")
-
 # Indicator Charts Section
 show_indicator_charts = st.checkbox("Show Indicator Charts", value=False)
 
@@ -225,7 +209,18 @@ if show_radar:
     st.subheader("Radar Chart Comparison")
     level = st.radio("Select level of indices:", ["Domain", "Subdomain"], horizontal=True, key="radar_level")
     df_radar = df_dom if level == "Domain" else df_sub
-    selected_countries_radar = st.multiselect("Select countries to compare:", df_radar["Country"].tolist(), default=["EU"])
+    available_countries = df_radar["Country"].tolist()
+
+    # Set default to 'EU' only if it exists in the available countries
+    default_countries = ["EU"] if "EU" in available_countries else []
+
+    # Use the multiselect widget to select countries for comparison
+    selected_countries_radar = st.multiselect(
+        "Select countries to compare:",
+        available_countries,
+        default=default_countries  # Dynamically set the default
+    )
+
     dimensions = df_radar.columns[1:]
     fig_radar = go.Figure()
     for country in selected_countries_radar:
