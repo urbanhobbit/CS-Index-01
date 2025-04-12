@@ -4,6 +4,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
+import pycountry
 
 st.set_page_config(layout="wide")
 st.title("Legitimacy Dashboard with Domains and Subdomains")
@@ -27,26 +28,23 @@ hierarchy = pd.DataFrame({
     "Indicator": indicator_row[1:]
 })
 
+
 # Sidebar Filters
 st.sidebar.header("Filter Structure")
 with st.sidebar.expander("Display Options", expanded=True):
-    # Selection for Domains
     all_domains = hierarchy["Domain"].unique()
     select_all_domains = st.checkbox("Select All Domains", value=True, key="select_all_domains")
     selected_domains = st.multiselect("Select Domains", options=all_domains, default=all_domains if select_all_domains else [])
     filtered_hierarchy = hierarchy[hierarchy["Domain"].isin(selected_domains)]
 
-    # Selection for Subdomains
     all_subdomains = filtered_hierarchy["Subdomain"].unique()
     select_all_subdomains = st.checkbox("Select All Subdomains", value=True, key="select_all_subdomains")
     selected_subdomains = st.multiselect("Select Subdomains", options=all_subdomains, default=all_subdomains if select_all_subdomains else [])
     filtered_hierarchy = filtered_hierarchy[filtered_hierarchy["Subdomain"].isin(selected_subdomains)]
 
-    # Selection for Countries
     countries = data["Country"].unique().tolist()
     selected_countries = st.multiselect("Select Countries", options=countries, default=countries)
 
-    # Selection for Indicators
     grouped_indicators = filtered_hierarchy.groupby("Subdomain")["Indicator"].apply(list).to_dict()
     selected_indicators = []
     select_all_indicators = st.checkbox("Select All Indicators", value=True, key="select_all_indicators")
@@ -59,26 +57,33 @@ df = data[data["Country"].isin(selected_countries)]
 df_raw_indicators = df[selected_indicators].apply(pd.to_numeric, errors='coerce')
 df_numeric = df_raw_indicators.copy()
 
-# Normalize Indicators
-for col in df_numeric.columns:
-    min_val = df_numeric[col].min()
-    max_val = df_numeric[col].max()
+# Step 1: Normalize indicators
+df_norm_indicators = df_numeric.copy()
+for col in df_norm_indicators.columns:
+    min_val = df_norm_indicators[col].min()
+    max_val = df_norm_indicators[col].max()
     if max_val > min_val:
-        df_numeric[col] = (df_numeric[col] - min_val) / (max_val - min_val)
+        df_norm_indicators[col] = (df_norm_indicators[col] - min_val) / (max_val - min_val)
 
-df_full = pd.concat([df[["Country"]], df_numeric], axis=1)
+df_full = pd.concat([df[["Country"]], df_norm_indicators], axis=1)
 
-# Calculate Subdomain Indices
+# Step 2: Calculate subdomain indices (average of indicators) and normalize
 subdomain_indices = {}
 for sub in filtered_hierarchy["Subdomain"].unique():
     inds = filtered_hierarchy[(filtered_hierarchy["Subdomain"] == sub) & (filtered_hierarchy["Indicator"].isin(selected_indicators))]["Indicator"].tolist()
     if inds:
-        subdomain_indices[sub] = df_numeric[inds].mean(axis=1, skipna=True)
+        subdomain_indices[sub] = df_norm_indicators[inds].mean(axis=1, skipna=True)
 
 df_sub = pd.DataFrame(subdomain_indices)
 df_sub.insert(0, "Country", df["Country"].values)
 
-# Calculate Domain Indices
+for col in df_sub.columns[1:]:
+    min_val = df_sub[col].min()
+    max_val = df_sub[col].max()
+    if max_val > min_val:
+        df_sub[col] = (df_sub[col] - min_val) / (max_val - min_val)
+
+# Step 3: Calculate domain indices (average of normalized subdomains) and normalize
 domain_indices = {}
 for dom in filtered_hierarchy["Domain"].unique():
     subs = filtered_hierarchy[filtered_hierarchy["Domain"] == dom]["Subdomain"].unique()
@@ -89,82 +94,90 @@ for dom in filtered_hierarchy["Domain"].unique():
 df_dom = pd.DataFrame(domain_indices)
 df_dom.insert(0, "Country", df["Country"].values)
 
-# Normalize Domain Indices
 for col in df_dom.columns[1:]:
     min_val = df_dom[col].min()
     max_val = df_dom[col].max()
     if max_val > min_val:
         df_dom[col] = (df_dom[col] - min_val) / (max_val - min_val)
 
-# Visualization Tabs (Using Radio Button for Tabs)
-visualization_tab = st.radio("Choose Visualization Type:", 
-                             ["Show Bar Charts", 
-                              "Show Composite Index Tables", 
-                              "Show Map", 
-                              "Show Indicator Charts", 
-                              "Show Scatter Plot", 
-                              "Show Radar Chart"], 
-                             index=0, 
-                             horizontal=True)
+# Step 4: Calculate composite index (average of normalized domains) and normalize
+df_composite = df_dom.copy()
+df_composite["Composite_Index"] = df_composite.iloc[:, 1:].mean(axis=1, skipna=True)
+min_val = df_composite["Composite_Index"].min()
+max_val = df_composite["Composite_Index"].max()
+if max_val > min_val:
+    df_composite["Composite_Index"] = (df_composite["Composite_Index"] - min_val) / (max_val - min_val)
 
-# Show Tables
-if visualization_tab == "Show Composite Index Tables":
-    st.subheader("Composite Indices by Domain")
-    st.dataframe(df_dom)
 
+
+
+
+def get_iso_alpha(country):
+    try:
+        return pycountry.countries.lookup(country).alpha_3
+    except:
+        return None
+
+# Visualization Menu
+view_option = st.radio("Select view:", ["Tables", "Bar Charts", "Map", "Scatter Plot", "Radar Chart", "Indicator Charts"], horizontal=True)
+
+if view_option == "Tables":
     st.subheader("Composite Indices by Subdomain")
     st.dataframe(df_sub)
 
-# Show Bar Charts
-elif visualization_tab == "Show Bar Charts":
+    st.subheader("Composite Indices by Domain")
+    st.dataframe(df_dom)
+
+    st.subheader("Composite Index")
+    st.dataframe(df_composite[["Country", "Composite_Index"]])
+
+elif view_option == "Bar Charts":
+    st.subheader("Bar Chart for Composite Index")
+    df_plot_comp = df_composite.set_index("Country")["Composite_Index"].sort_values()
+    colors_comp = ['red' if idx == "EU" else 'blue' for idx in df_plot_comp.index]
+    fig_comp, ax_comp = plt.subplots(figsize=(10, 6))
+    df_plot_comp.plot(kind='barh', ax=ax_comp, color=colors_comp)
+    ax_comp.set_xlabel("Composite Index")
+    ax_comp.set_ylabel("Country")
+    ax_comp.set_title("Composite Index by Country")
+    st.pyplot(fig_comp)
+
     st.subheader("Bar Chart for Domain Index")
-    selected_domain_to_plot = st.selectbox("Select a Domain to Plot", options=df_dom.columns[1:], key="domain_plot")
-    df_plot_dom = df_dom.set_index("Country")[[selected_domain_to_plot]].sort_values(by=selected_domain_to_plot)
+    selected_domain = st.selectbox("Select Domain to Plot:", options=df_dom.columns[1:], key="domain_plot")
+    df_plot_dom = df_dom.set_index("Country")[[selected_domain]].sort_values(by=selected_domain)
     colors_dom = ['red' if idx == "EU" else 'blue' for idx in df_plot_dom.index]
     fig_dom, ax_dom = plt.subplots(figsize=(10, 6))
-    df_plot_dom[selected_domain_to_plot].plot(kind='barh', ax=ax_dom, color=colors_dom)
-    ax_dom.set_xlabel("Composite Index")
+    df_plot_dom[selected_domain].plot(kind='barh', ax=ax_dom, color=colors_dom)
+    ax_dom.set_xlabel("Domain Index")
     ax_dom.set_ylabel("Country")
-    ax_dom.set_title(f"{selected_domain_to_plot} Index by Country")
+    ax_dom.set_title(f"{selected_domain} by Country")
     st.pyplot(fig_dom)
 
     st.subheader("Bar Chart for Subdomain Index")
-    selected_subdomain_to_plot = st.selectbox("Select a Subdomain to Plot", options=df_sub.columns[1:], key="subdomain_plot")
-    df_plot_sub = df_sub.set_index("Country")[[selected_subdomain_to_plot]].sort_values(by=selected_subdomain_to_plot)
+    selected_subdomain = st.selectbox("Select Subdomain to Plot:", options=df_sub.columns[1:], key="subdomain_plot")
+    df_plot_sub = df_sub.set_index("Country")[[selected_subdomain]].sort_values(by=selected_subdomain)
     colors_sub = ['red' if idx == "EU" else 'blue' for idx in df_plot_sub.index]
     fig_sub, ax_sub = plt.subplots(figsize=(10, 6))
-    df_plot_sub[selected_subdomain_to_plot].plot(kind='barh', ax=ax_sub, color=colors_sub)
-    ax_sub.set_xlabel("Composite Index")
+    df_plot_sub[selected_subdomain].plot(kind='barh', ax=ax_sub, color=colors_sub)
+    ax_sub.set_xlabel("Subdomain Index")
     ax_sub.set_ylabel("Country")
-    ax_sub.set_title(f"{selected_subdomain_to_plot} Index by Country")
+    ax_sub.set_title(f"{selected_subdomain} by Country")
     st.pyplot(fig_sub)
 
-# Show Map
-elif visualization_tab == "Show Map":
-    st.subheader("Map: Selected Index")
-    index_type = st.radio("Choose index type for map:", ["Domain", "Subdomain", "Indicator (normalized)", "Indicator (raw)"], horizontal=True)
-    index_df = df_dom if index_type == "Domain" else df_sub if index_type == "Subdomain" else df_full if index_type == "Indicator (normalized)" else pd.concat([df[["Country"]], df_raw_indicators], axis=1)
-    index_column = st.selectbox("Select index to map:", options=index_df.columns[1:], key="map_index")
-
-    import pycountry
-    def country_to_iso(name):
-        try:
-            return pycountry.countries.lookup(name).alpha_3
-        except:
-            return None
-
-    df_map = index_df[["Country", index_column]].copy()
-    df_map["iso_alpha"] = df_map["Country"].apply(country_to_iso)
+elif view_option == "Map":
+    st.subheader("Map of Composite Index")
+    df_map = df_composite[["Country", "Composite_Index"]].copy()
+    df_map["iso_alpha"] = df_map["Country"].apply(get_iso_alpha)
     df_map = df_map.dropna(subset=["iso_alpha"])
 
     fig_map = px.choropleth(
         df_map,
         locations="iso_alpha",
-        color=index_column,
+        color="Composite_Index",
         hover_name="Country",
         color_continuous_scale="Blues",
         scope="europe",
-        title=f"{index_column} by Country"
+        title="Composite Index by Country"
     )
     fig_map.update_geos(
         projection_type="mercator",
@@ -174,42 +187,10 @@ elif visualization_tab == "Show Map":
     fig_map.update_layout(margin={"r":0,"t":30,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
-# Show Indicator Charts
-elif visualization_tab == "Show Indicator Charts":
-    st.subheader("Bar Chart for Indicator")
-    norm_or_raw = st.radio("Show indicators as:", ["Normalized", "Raw"], horizontal=True)
-    sort_order = st.radio("Sort order:", ["Descending", "Ascending"], horizontal=True, key="sort_order")
-    ascending = sort_order == "Ascending"
-
-    indicator_df = df_full if norm_or_raw == "Normalized" else pd.concat([df[["Country"]], df_raw_indicators], axis=1)
-
-    grouped_options = {sub: indicators for sub, indicators in grouped_indicators.items() if any(i in indicator_df.columns for i in indicators)}
-    if not grouped_options:
-        st.warning("No available indicators in the selected structure.")
-    else:
-        subdomain_selected = st.selectbox("Select a Subdomain", list(grouped_options.keys()), key="subdomain_group")
-        indicators_in_group = [i for i in grouped_options[subdomain_selected] if i in indicator_df.columns]
-        selected_indicator_to_plot = st.selectbox("Select an Indicator to Plot", options=indicators_in_group, key="indicator_plot")
-
-        df_plot_ind = indicator_df.set_index("Country")[[selected_indicator_to_plot]].sort_values(by=selected_indicator_to_plot, ascending=ascending)
-        colors_ind = ['red' if idx == "EU" else 'blue' for idx in df_plot_ind.index]
-        fig_ind, ax_ind = plt.subplots(figsize=(10, 6))
-        df_plot_ind[selected_indicator_to_plot].plot(kind='barh', ax=ax_ind, color=colors_ind)
-        ax_ind.set_xlabel("Indicator Value")
-        ax_ind.set_ylabel("Country")
-        ax_ind.set_title(f"{selected_indicator_to_plot} by Country ({norm_or_raw})")
-        st.pyplot(fig_ind)
-
-        if norm_or_raw == "Normalized":
-            st.caption("Values are normalized using min-max scaling to a 0–1 range.")
-        else:
-            st.caption("Values reflect original scales without normalization.")
-
-# Scatter Plot Comparison
-elif visualization_tab == "Show Scatter Plot":
+elif view_option == "Scatter Plot":
     st.subheader("Scatter Plot of Indices")
-    level = st.radio("Select level of indices:", ["Domain", "Subdomain"], horizontal=True, key="scatter_level")
-    df_to_plot = df_dom if level == "Domain" else df_sub
+    level = st.radio("Select level of indices:", ["Domain", "Subdomain", "Composite"], horizontal=True, key="scatter_level_menu")
+    df_to_plot = df_dom if level == "Domain" else df_sub if level == "Subdomain" else df_composite[["Country", "Composite_Index"]]
     x_axis = st.selectbox("Select X-axis index:", df_to_plot.columns[1:], key="x_axis")
     y_axis = st.selectbox("Select Y-axis index:", df_to_plot.columns[1:], key="y_axis")
     fig_scatter = px.scatter(df_to_plot, x=x_axis, y=y_axis, text="Country", color=np.where(df_to_plot["Country"]=="EU", "EU", "Other"))
@@ -217,16 +198,32 @@ elif visualization_tab == "Show Scatter Plot":
     fig_scatter.update_layout(title=f"{x_axis} vs {y_axis} by Country")
     st.plotly_chart(fig_scatter, use_container_width=True)
 
-# Radar Chart Comparison
-elif visualization_tab == "Show Radar Chart":
+elif view_option == "Radar Chart":
     st.subheader("Radar Chart Comparison")
-    level = st.radio("Select level of indices:", ["Domain", "Subdomain"], horizontal=True, key="radar_level")
-    df_radar = df_dom if level == "Domain" else df_sub
+    level = st.radio("Select level of indices:", ["Domain", "Subdomain", "Composite"], horizontal=True, key="radar_level_menu_2")
+    df_radar = df_dom if level == "Domain" else df_sub if level == "Subdomain" else df_composite[["Country", "Composite_Index"]]
     selected_countries_radar = st.multiselect("Select countries to compare:", df_radar["Country"].tolist(), default=["EU"])
     dimensions = df_radar.columns[1:]
     fig_radar = go.Figure()
     for country in selected_countries_radar:
         values = df_radar[df_radar["Country"] == country][dimensions].values.flatten().tolist()
         fig_radar.add_trace(go.Scatterpolar(r=values, theta=dimensions, fill='toself', name=country))
-    fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0,1])), showlegend=True)
+    fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 1])), showlegend=True)
     st.plotly_chart(fig_radar, use_container_width=True)
+
+elif view_option == "Indicator Charts":
+    st.subheader("Indicator Chart")
+    norm_or_raw = st.radio("Select indicator type:", ["Normalized", "Raw"], horizontal=True)
+    indicator_df = df_full if norm_or_raw == "Normalized" else pd.concat([df[["Country"]], df_raw_indicators], axis=1)
+    grouped_options = {sub: indicators for sub, indicators in grouped_indicators.items() if any(i in indicator_df.columns for i in indicators)}
+    subdomain_selected = st.selectbox("Select Subdomain", list(grouped_options.keys()), key="subdomain_group")
+    indicators_in_group = [i for i in grouped_options[subdomain_selected] if i in indicator_df.columns]
+    selected_indicator_to_plot = st.selectbox("Select Indicator", options=indicators_in_group, key="indicator_plot")
+    df_plot_ind = indicator_df.set_index("Country")[[selected_indicator_to_plot]].sort_values(by=selected_indicator_to_plot)
+    colors_ind = ['red' if idx == "EU" else 'blue' for idx in df_plot_ind.index]
+    fig_ind, ax_ind = plt.subplots(figsize=(10, 6))
+    df_plot_ind[selected_indicator_to_plot].plot(kind='barh', ax=ax_ind, color=colors_ind)
+    ax_ind.set_xlabel("Indicator Value")
+    ax_ind.set_ylabel("Country")
+    ax_ind.set_title(f"{selected_indicator_to_plot} by Country ({norm_or_raw})")
+    st.pyplot(fig_ind)
