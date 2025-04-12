@@ -157,6 +157,9 @@ if show_map:
     fig_map.update_layout(margin={"r":0,"t":30,"l":0,"b":0})
     st.plotly_chart(fig_map, use_container_width=True)
 
+st.download_button("Download Composite Index Data (Subdomains)", df_sub.to_csv(index=False), file_name="subdomain_indices.csv")
+
+
 # Indicator Charts Section
 show_indicator_charts = st.checkbox("Show Indicator Charts", value=False)
 
