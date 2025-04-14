@@ -26,24 +26,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-import base64
-
-def get_base64_image(image_path):
-    with open(image_path, "rb") as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
-
-image_base64 = get_base64_image("Logo CO3.png")
-logo_html = f"""
+logo_html = """
     <div style='display: flex; align-items: center;'>
-    <img src='data:image/png;base64,{image_base64}' width='70' style='margin-right: 10px;'>
-    <div>
-        <h1 style='color:#14213D; margin-bottom: 0;'>Social Contract Indicators Dashboard</h1>
-        <p style='color:#555; font-size: 1rem; margin-top: 0;'>CO3 - Resilient Social Contracts for Democratic Societies</p>
+        <img src='https://raw.githubusercontent.com/emreekinci/co3-assets/main/logo.png' width='70' style='margin-right: 10px;'>
+        <div>
+            <h1 style='color:#14213D; margin-bottom: 0;'>Social Contract Indicators Dashboard</h1>
+            <p style='color:#555; font-size: 1rem; margin-top: 0;'>CO3 - Resilient Social Contracts for Democratic Societies</p>
+        </div>
     </div>
-</div>
 """
 st.markdown(logo_html, unsafe_allow_html=True)
+
 
 st.markdown("""
     <style>
