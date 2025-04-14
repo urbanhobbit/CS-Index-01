@@ -28,7 +28,7 @@ st.markdown("""
 
 logo_html = """
     <div style='display: flex; align-items: center;'>
-        <img src='https://raw.githubusercontent.com/emreekinci/co3-assets/main/logo.png' width='100' style='margin-right: 15px;'>
+        <img src='https://github.com/urbanhobbit/CS-Index-01/raw/main/Logo%20CO3.png' width='120' style='margin-right: 20px;'>
         <div>
             <h1 style='color:#14213D; margin-bottom: 0;'>Social Contract Indicators Dashboard</h1>
             <p style='color:#555; font-size: 1rem; margin-top: 0;'>CO3 - Resilient Social Contracts for Democratic Societies</p>
@@ -193,15 +193,21 @@ elif view_option == "Bar Charts":
     st.pyplot(fig_comp)
 
     st.subheader("Bar Chart for Domain Index")
-    selected_domain = st.selectbox("Select Domain to Plot:", options=df_dom.columns[1:], key="domain_plot")
-    df_plot_dom = df_dom.set_index("Country")[[selected_domain]].sort_values(by=selected_domain)
-    colors_dom = ['red' if idx == "EU" else 'blue' for idx in df_plot_dom.index]
-    fig_dom, ax_dom = plt.subplots(figsize=(10, 6))
-    df_plot_dom[selected_domain].plot(kind='barh', ax=ax_dom, color=colors_dom)
-    ax_dom.set_xlabel("Domain Index")
-    ax_dom.set_ylabel("Country")
-    ax_dom.set_title(f"{selected_domain} by Country")
-    st.pyplot(fig_dom)
+    if len(df_dom.columns) > 1:
+        selected_domain = st.selectbox("Select Domain to Plot:", options=df_dom.columns[1:], key="domain_plot")
+        if selected_domain in df_dom.columns:
+            df_plot_dom = df_dom.set_index("Country")[[selected_domain]].sort_values(by=selected_domain)
+            colors_dom = ['red' if idx == "EU" else 'blue' for idx in df_plot_dom.index]
+            fig_dom, ax_dom = plt.subplots(figsize=(10, 6))
+            df_plot_dom[selected_domain].plot(kind='barh', ax=ax_dom, color=colors_dom)
+            ax_dom.set_xlabel("Domain Index")
+            ax_dom.set_ylabel("Country")
+            ax_dom.set_title(f"{selected_domain} by Country")
+            st.pyplot(fig_dom)
+        else:
+            st.warning("Selected domain is not available in the filtered dataset.")
+    else:
+        st.warning("No domain data available after filtering.")
 
     st.subheader("Bar Chart for Subdomain Index")
     selected_subdomain = st.selectbox("Select Subdomain to Plot:", options=df_sub.columns[1:], key="subdomain_plot")
