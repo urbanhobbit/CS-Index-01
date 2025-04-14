@@ -28,7 +28,7 @@ st.markdown("""
 
 logo_html = """
     <div style='display: flex; align-items: center;'>
-        <img src='https://raw.githubusercontent.com/emreekinci/co3-assets/main/logo.png' width='70' style='margin-right: 10px;'>
+        <img src='https://raw.githubusercontent.com/emreekinci/co3-assets/main/logo.png' width='100' style='margin-right: 15px;'>
         <div>
             <h1 style='color:#14213D; margin-bottom: 0;'>Social Contract Indicators Dashboard</h1>
             <p style='color:#555; font-size: 1rem; margin-top: 0;'>CO3 - Resilient Social Contracts for Democratic Societies</p>
