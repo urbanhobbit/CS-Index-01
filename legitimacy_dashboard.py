@@ -7,7 +7,64 @@ import matplotlib.pyplot as plt
 import pycountry
 
 st.set_page_config(layout="wide")
-st.title("Legitimacy Dashboard with Domains and Subdomains")
+
+st.markdown("""
+    <style>
+        html, body, [class*='css'] {
+            font-family: 'Open Sans', sans-serif;
+        }
+        .block-container {
+            padding-top: 2rem;
+        }
+        .stRadio > label {
+            color: #14213D;
+            font-weight: 600;
+        }
+        h1, h2, h3, h4 {
+            color: #14213D;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+import base64
+
+def get_base64_image(image_path):
+    with open(image_path, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+image_base64 = get_base64_image("Logo CO3.png")
+logo_html = f"""
+    <div style='display: flex; align-items: center;'>
+    <img src='data:image/png;base64,{image_base64}' width='70' style='margin-right: 10px;'>
+    <div>
+        <h1 style='color:#14213D; margin-bottom: 0;'>Social Contract Indicators Dashboard</h1>
+        <p style='color:#555; font-size: 1rem; margin-top: 0;'>CO3 - Resilient Social Contracts for Democratic Societies</p>
+    </div>
+</div>
+"""
+st.markdown(logo_html, unsafe_allow_html=True)
+
+st.markdown("""
+    <style>
+        html, body, [class*="css"]  {
+            font-family: 'Open Sans', sans-serif;
+        }
+        .block-container {
+            padding-top: 2rem;
+        }
+        .stRadio > label {
+            color: #14213D;
+            font-weight: 600;
+        }
+        h1, h2, h3, h4 {
+            color: #14213D;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+
+
 
 # Load the dataset directly
 df_raw = pd.read_excel("SC Indicators Data Prep.xlsx", sheet_name=0, header=None)
@@ -227,3 +284,15 @@ elif view_option == "Indicator Charts":
     ax_ind.set_ylabel("Country")
     ax_ind.set_title(f"{selected_indicator_to_plot} by Country ({norm_or_raw})")
     st.pyplot(fig_ind)
+
+
+
+
+
+# Footer
+st.markdown("""
+    <hr style='margin-top: 3rem;'>
+    <div style='text-align: center; color: #666; font-size: 0.9rem;'>
+        Developed by <strong>Istanbul Bilgi University Team - 2025</strong>
+    </div>
+""", unsafe_allow_html=True)
